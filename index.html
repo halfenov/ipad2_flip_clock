@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="ru" class="no-anim">
+<head>
+<meta charset="utf-8">
+
+<!-- ВАЖНО для iPad 2 / iOS 9: порядок и состав meta-тегов ниже проверен под Safari 9.3 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Часы">
+<meta name="format-detection" content="telephone=no">
+<meta name="theme-color" content="#000000">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0 0 32 32'%3E%3Crect%20width='32'%20height='32'%20rx='5'%20fill='%23000'/%3E%3Ctext%20x='16'%20y='23'%20font-family='Helvetica'%20font-size='16'%20font-weight='bold'%20fill='%23e8e8e8'%20text-anchor='middle'%3E21%3C/text%3E%3C/svg%3E">
+
+<title>Часы</title>
+
+<style>
+/* ============================================================
+   Перекидные часы для iPad 2 (iOS 9.3, Safari)
+   Только ES5 + CSS2.1/3 с -webkit- префиксами.
+   Без CSS-переменных, без grid, без flex-фолбэков, без calc().
+   Все размеры в em от .clock -> масштабируются одной строкой.
+   ============================================================ */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  background: #000;
+  overflow: hidden;
+}
+
+body {
+  color: #e8e8e8;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+/* мягкая виньетка по краям — на чёрном OLED/IPS выглядит аккуратнее */
+.vignette {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: -webkit-radial-gradient(center, ellipse cover,
+              rgba(255,255,255,0.030) 0%,
+              rgba(255,255,255,0.000) 55%,
+              rgba(0,0,0,0.45) 100%);
+}
+
+#screen {
+  position: absolute;
+  left: 0; top: 0; right: 0; bottom: 0;
+  z-index: 1;
+}
+
+/* ---------- центрирование без flex: display:table-cell,
+     железно работает даже в Safari 4 ---------- */
+#screen { display: table; width: 100%; height: 100%; }
+.center {
+  display: table-cell;
+  vertical-align: middle;
+  text-align: center;
+}
+
+/* ---------- размер всего циферблата задаётся ОДНИМ font-size ----------
+   (в пикселях его выставляет JS из размеров окна — см. layout()) */
+.clock {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 300px;
+}
+
+.group {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* ---------- карточка ---------- */
+.flip {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  width: 0.66em;
+  height: 1.00em;
+  margin: 0 0.018em;
+  background: #0b0b0b;
+  border-radius: 0.055em;
+  -webkit-perspective: 2.4em;
+  perspective: 2.4em;
+  -webkit-transform-style: flat;
+  overflow: visible;
+}
+
+.face {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  overflow: hidden;
+  background: #0b0b0b;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+.top    { top: 0;    border-radius: 0.055em 0.055em 0 0; }
+.bottom { bottom: 0; border-radius: 0 0 0.055em 0.055em; }
+
+/* цифра: её вертикальный центр совпадает с линией сгиба.
+   height/line-height = 1.25em собственного font-size (0.80em карточки)
+   = ровно высота карточки (1.00em карточки). */
+.digit {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 1.25em;
+  line-height: 1.25em;
+  text-align: center;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-weight: bold;
+  font-size: 0.80em;
+  color: #e8e8e8;
+}
+.bottom .digit { top: -0.625em; }  /* нижняя половина показывает низ глифа */
+
+/* линия сгиба + лёгкое затенение */
+.bottom:before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 6;
+}
+.bottom:after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0; bottom: 0;
+  background: -webkit-linear-gradient(top, rgba(0,0,0,0.34) 0%, rgba(0,0,0,0.05) 42%, rgba(0,0,0,0) 100%);
+  z-index: 5;
+  pointer-events: none;
+}
+.top:after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0; bottom: 0;
+  background: -webkit-linear-gradient(top, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0) 62%);
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* ---------- летающие створки анимации ---------- */
+.leaf {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  overflow: hidden;
+  background: #0b0b0b;
+  -webkit-transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  z-index: 8;
+}
+.leaf-a {
+  top: 0;
+  border-radius: 0.055em 0.055em 0 0;
+  -webkit-transform-origin: 50% 100%;
+  transform-origin: 50% 100%;
+  -webkit-transform: rotateX(-90deg) translateZ(0);
+  transform: rotateX(-90deg) translateZ(0);
+}
+.leaf-b {
+  bottom: 0;
+  border-radius: 0 0 0.055em 0.055em;
+  -webkit-transform-origin: 50% 0%;
+  transform-origin: 50% 0%;
+  -webkit-transform: rotateX(90deg) translateZ(0);
+  transform: rotateX(90deg) translateZ(0);
+}
+.leaf-b .digit { top: -0.625em; }
+
+/* тень створки, летящей вниз (leaf-a) — даёт объём */
+.leaf-a .shade {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0);
+  z-index: 9;
+}
+
+.anim-leaf-a { -webkit-animation: leafA 0.30s cubic-bezier(0.36, 0, 0.66, -0.28) 0s 1 normal forwards; animation: leafA 0.30s cubic-bezier(0.36, 0, 0.66, -0.28) 0s 1 normal forwards; }
+.anim-leaf-b { -webkit-animation: leafB 0.30s cubic-bezier(0.34, 1.30, 0.64, 1) 0.30s 1 normal forwards; animation: leafB 0.30s cubic-bezier(0.34, 1.30, 0.64, 1) 0.30s 1 normal forwards; }
+.anim-shade  { -webkit-animation: shadeA 0.30s linear 0s 1 normal forwards; animation: shadeA 0.30s linear 0s 1 normal forwards; }
+
+@-webkit-keyframes leafA {
+  from { -webkit-transform: rotateX(0deg) translateZ(0); }
+  to   { -webkit-transform: rotateX(-90deg) translateZ(0); }
+}
+@keyframes leafA {
+  from { transform: rotateX(0deg) translateZ(0); }
+  to   { transform: rotateX(-90deg) translateZ(0); }
+}
+@-webkit-keyframes leafB {
+  from { -webkit-transform: rotateX(90deg) translateZ(0); }
+  to   { -webkit-transform: rotateX(0deg) translateZ(0); }
+}
+@keyframes leafB {
+  from { transform: rotateX(90deg) translateZ(0); }
+  to   { transform: rotateX(0deg) translateZ(0); }
+}
+@-webkit-keyframes shadeA {
+  from { background: rgba(0,0,0,0); }
+  to   { background: rgba(0,0,0,0.62); }
+}
+@keyframes shadeA {
+  from { background: rgba(0,0,0,0); }
+  to   { background: rgba(0,0,0,0.62); }
+}
+
+/* при первой загрузке и при смене настроек анимацию не включаем */
+html.no-anim .leaf,
+html.no-anim .shade { -webkit-animation: none !important; animation: none !important; }
+
+/* ---------- двоеточие ---------- */
+.colon {
+  display: inline-block;
+  vertical-align: middle;
+  width: 0.22em;
+  height: 1.00em;
+  position: relative;
+  margin: 0 0.02em;
+}
+.colon i {
+  position: absolute;
+  left: 50%;
+  width: 0.085em;
+  height: 0.085em;
+  margin-left: -0.0425em;
+  border-radius: 50%;
+  background: #e8e8e8;
+}
+.colon i.d1 { top: 33%; margin-top: -0.0425em; }
+.colon i.d2 { top: 67%; margin-top: -0.0425em; }
+
+/* ---------- секунды (по умолчанию скрыты) ---------- */
+#secRow {
+  position: absolute;
+  left: 0; right: 0;
+  top: 1.06em;
+  text-align: center;
+  display: none;
+}
+body.show-seconds #secRow { display: block; }
+#secRow:after { content: ""; display: inline-block; width: 0.26em; }
+
+.flip.small, .secwrap { font-size: 0.30em; }
+
+#secStatic {
+  position: absolute;
+  left: 0; right: 0;
+  top: 3.66em;              /* = 1.10em циферблата в em собственного font-size */
+  display: none;
+  line-height: 1.2;
+  font-size: 0.30em;
+  letter-spacing: 0.06em;
+  color: rgba(232, 232, 232, 0.55);
+  font-weight: normal;
+  text-align: center;
+}
+body.sec-static #secStatic { display: block; }
+body.sec-static #secRow { display: none; }
+body.sec-static #secFlip { display: none; }
+
+/* ---------- дата ---------- */
+.dateline {
+  margin-top: 0.52em;
+  line-height: 1.4;
+  text-align: center;
+  font-size: 0.14em;
+  font-weight: 300;
+  letter-spacing: 0.10em;
+  color: rgba(232, 232, 232, 0.42);
+  text-transform: lowercase;
+  display: none;
+}
+body.show-date .dateline { display: block; }
+/* когда под часами живёт строка секунд — дате отступаем ниже неё */
+body.show-seconds.show-date .dateline,
+body.sec-static.show-date .dateline { margin-top: 3.9em; }
+
+/* ---------- подсказка «На экран Домой» ---------- */
+.hint {
+  position: absolute;
+  left: 50%;
+  bottom: 3.2%;
+  -webkit-transform: translateX(-50%);
+  transform: translateX(-50%);
+  z-index: 3;
+  max-width: 88%;
+  padding: 0.55em 1.0em;
+  border: 1px solid rgba(232,232,232,0.14);
+  border-radius: 0.8em;
+  background: rgba(18,18,18,0.80);
+  color: rgba(232,232,232,0.62);
+  font-size: 15px;
+  line-height: 1.45;
+  text-align: center;
+  opacity: 0;
+  -webkit-transition: opacity 0.6s linear;
+  transition: opacity 0.6s linear;
+  pointer-events: none;
+}
+.hint.on { opacity: 1; }
+
+/* ---------- панель настроек ---------- */
+#panel {
+  position: absolute;
+  left: 50%;
+  bottom: 3.2%;
+  -webkit-transform: translateX(-50%);
+  transform: translateX(-50%);
+  z-index: 10;
+  padding: 10px;
+  border: 1px solid rgba(232,232,232,0.14);
+  border-radius: 14px;
+  background: rgba(18,18,18,0.88);
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  -webkit-transition: opacity 0.25s linear;
+  transition: opacity 0.25s linear;
+}
+#panel.on { opacity: 1; visibility: visible; }
+#panel button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-block;
+  margin: 0 4px;
+  padding: 9px 14px;
+  border: 1px solid rgba(232,232,232,0.20);
+  border-radius: 9px;
+  background: rgba(255,255,255,0.04);
+  color: rgba(232,232,232,0.80);
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.1;
+  outline: none;
+}
+#panel button.on {
+  background: #e8e8e8;
+  color: #0b0b0b;
+  border-color: #e8e8e8;
+}
+
+/* ---------- чистый белый / чистый чёрный (яркий режим) ---------- */
+body.pure              { color: #ffffff; background: #000000; }
+body.pure .flip,
+body.pure .face,
+body.pure .leaf        { background: #000000; }
+body.pure .digit       { color: #ffffff; }
+body.pure .colon i     { background: #ffffff; }
+body.pure .dateline    { color: rgba(255,255,255,0.55); }
+body.pure .bottom:after { background: -webkit-linear-gradient(top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.10) 45%, rgba(0,0,0,0) 100%); }
+body.pure .top:after    { background: none; }
+body.pure .vignette    { background: none; }
+</style>
+</head>
+
+<body class="show-date">
+
+<div class="vignette"></div>
+
+<div id="screen">
+  <div class="center">
+    <!-- ВАЖНО: между inline-блоками нет пробельных узлов,
+         иначе на font-size циферблата они дают огромные зазоры -->
+    <div class="clock" id="clock"><div class="group"><div class="flip" id="h0"></div><div class="flip" id="h1"></div></div><div class="colon"><i class="d1"></i><i class="d2"></i></div><div class="group"><div class="flip" id="m0"></div><div class="flip" id="m1"></div></div><div id="secRow"><div class="colon secwrap"><i class="d1"></i><i class="d2"></i></div><div class="flip small" id="s0"></div><div class="flip small" id="s1"></div></div><div id="secStatic"></div><div class="dateline" id="dateLine"></div></div>
+  </div>
+</div>
+
+<div class="hint" id="hint">
+  Нажмите <b>&#9633;</b> («Поделиться») в Safari, затем <b>«На экран Домой»</b> —<br>
+  часы будут открываться на весь экран, без адресной строки.
+</div>
+
+<div id="panel">
+  <button type="button" id="btnFull">Во весь экран</button>
+  <button type="button" id="btnSec">Секунды</button>
+  <button type="button" id="btnDate">Дата</button>
+  <button type="button" id="btnBright">Ярче</button>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- возможности Safari ---------- */
+  var ua = navigator.userAgent;
+  var isIOS = /iP(hone|ad|od)/.test(ua);
+  var isStandalone = (window.navigator.standalone === true) ||
+                     (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+  var el = document.createElement("div");
+  var canAnimate = typeof el.style.webkitAnimationName !== "undefined" ||
+                   typeof el.style.animationName !== "undefined";
+  var can3d = typeof el.style.webkitPerspective !== "undefined" ||
+              typeof el.style.perspective !== "undefined";
+  var animOK = canAnimate && can3d;
+
+  var FLIP_MS = 600;          /* 0.30 + 0.30 задержка */
+  var store = window.localStorage;
+
+  /* ---------- настройки ---------- */
+  function loadCfg() {
+    var c = { seconds: "off", date: true, pure: false };
+    try {
+      if (store) {
+        if (store.getItem("fc.seconds") !== null) c.seconds = store.getItem("fc.seconds");
+        if (store.getItem("fc.date")    !== null) c.date    = (store.getItem("fc.date") === "1");
+        if (store.getItem("fc.pure")    !== null) c.pure    = (store.getItem("fc.pure") === "1");
+      }
+    } catch (e) {}
+    return c;
+  }
+  function saveCfg() {
+    try {
+      if (!store) return;
+      store.setItem("fc.seconds", cfg.seconds);
+      store.setItem("fc.date",    cfg.date ? "1" : "0");
+      store.setItem("fc.pure",    cfg.pure ? "1" : "0");
+    } catch (e) {}
+  }
+  var cfg = loadCfg();
+
+  /* ---------- русские названия ---------- */
+  var DAYS = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
+  var MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня",
+                "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+
+  /* ---------- одна перекидная карточка ---------- */
+  function Flip(node) {
+    this.el = node;
+    this.top = document.createElement("div");
+    this.top.className = "face top";
+    this.bot = document.createElement("div");
+    this.bot.className = "face bottom";
+    this.td = document.createElement("div"); this.td.className = "digit";
+    this.bd = document.createElement("div"); this.bd.className = "digit";
+    this.top.appendChild(this.td);
+    this.bot.appendChild(this.bd);
+    node.appendChild(this.top);
+    node.appendChild(this.bot);
+    this.val = null;      /* логическое текущее значение */
+    this.pending = null;  /* значение, до которого идёт анимация */
+    this.busy = false;
+    this.timer = null;
+  }
+
+  Flip.prototype.buildLeaf = function (cls, text) {
+    var leaf = document.createElement("div");
+    leaf.className = "leaf " + cls;
+    var d = document.createElement("div");
+    d.className = "digit";
+    d.appendChild(document.createTextNode(text));
+    leaf.appendChild(d);
+    return leaf;
+  };
+
+  Flip.prototype.clearLeaves = function () {
+    var leaves = this.el.getElementsByClassName("leaf");
+    while (leaves.length) { leaves[0].parentNode.removeChild(leaves[0]); }
+  };
+
+  /* мгновенная установка (без анимации) */
+  Flip.prototype.set = function (v) {
+    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+    this.busy = false;
+    this.clearLeaves();
+    this.val = v;
+    this.pending = null;
+    this.td.innerHTML = "";
+    this.bd.innerHTML = "";
+    this.td.appendChild(document.createTextNode(v));
+    this.bd.appendChild(document.createTextNode(v));
+  };
+
+  /* установка с перекидыванием:
+     фаза 1 — створка leaf-a (СТАРОВОЕ значение) падает вниз и открывает
+              новую верхнюю половину; низ пока ещё показывает старое;
+     фаза 2 — створка leaf-b (НОВОЕ значение) опускается на нижнюю половину. */
+  Flip.prototype.flipTo = function (v) {
+    if (this.val === v) { return; }
+    if (this.val === null || !animOK) { this.set(v); return; }
+    if (this.busy) { this.set(this.pending !== null ? this.pending : this.val); }
+
+    var oldV = this.val;
+    this.val = v;
+    this.pending = v;
+
+    /* верхняя статичная половина сразу новая: в фазе 1 её прикрывает leaf-a */
+    this.td.innerHTML = ""; this.td.appendChild(document.createTextNode(v));
+
+    var a = this.buildLeaf("leaf-a anim-leaf-a", oldV);
+    var shade = document.createElement("div");
+    shade.className = "shade anim-shade";
+    a.appendChild(shade);
+
+    var b = this.buildLeaf("leaf-b anim-leaf-b", v);
+
+    this.el.appendChild(a);
+    this.el.appendChild(b);
+    this.busy = true;
+
+    var done = false;
+    var self = this;
+    function finish() {
+      if (done) { return; }
+      done = true;
+      self.busy = false;
+      if (self.timer) { clearTimeout(self.timer); self.timer = null; }
+      /* створка легла: нижняя половина принимает новое значение */
+      self.bd.innerHTML = "";
+      self.bd.appendChild(document.createTextNode(self.pending !== null ? self.pending : self.val));
+      self.pending = null;
+      self.clearLeaves();
+    }
+    /* страховка: если webkitAnimationEnd не придёт (старый WebKit, фон вкладки) */
+    this.timer = setTimeout(finish, FLIP_MS + 400);
+    if (b.addEventListener) {
+      b.addEventListener("webkitAnimationEnd", finish, false);
+      b.addEventListener("animationend", finish, false);
+    }
+  };
+
+  Flip.prototype.stop = function () {
+    this.set(this.pending !== null ? this.pending : this.val);
+  };
+
+  /* ---------- собираем циферблат ---------- */
+  var H0 = new Flip(document.getElementById("h0"));
+  var H1 = new Flip(document.getElementById("h1"));
+  var M0 = new Flip(document.getElementById("m0"));
+  var M1 = new Flip(document.getElementById("m1"));
+  var S0 = new Flip(document.getElementById("s0"));
+  var S1 = new Flip(document.getElementById("s1"));
+  var all = [H0, H1, M0, M1, S0, S1];
+
+  var dateLine  = document.getElementById("dateLine");
+  var secStatic = document.getElementById("secStatic");
+  var hint      = document.getElementById("hint");
+  var panel     = document.getElementById("panel");
+  var body      = document.body;
+  var clockEl   = document.getElementById("clock");
+
+  /* весь циферблат масштабируется одним font-size:
+     ширина ряда карточек ~3.05em, высота блока с датой ~1.6em */
+  function layout() {
+    var w = window.innerWidth || document.documentElement.clientWidth || 1024;
+    var h = window.innerHeight || document.documentElement.clientHeight || 768;
+    var fs = Math.min(w * 0.30, h * 0.50);
+    if (fs < 40) { fs = 40; }
+    clockEl.style.fontSize = Math.round(fs) + "px";
+  }
+
+  var lastH = -1, lastM = -1, lastS = -1, lastDay = -1;
+
+  function applyClass() {
+    body.className = "";
+    if (cfg.date)                 { body.className += " show-date"; }
+    if (cfg.seconds === "flip")   { body.className += " show-seconds"; }
+    if (cfg.seconds === "static") { body.className += " sec-static"; }
+    if (cfg.pure)                 { body.className += " pure"; }
+  }
+
+  function updateDate(now) {
+    if (now.getDate() === lastDay) { return; }
+    lastDay = now.getDate();
+    var txt = DAYS[now.getDay()] + ", " + now.getDate() + " " +
+              MONTHS[now.getMonth()] + " " + now.getFullYear();
+    dateLine.innerHTML = "";
+    dateLine.appendChild(document.createTextNode(txt));
+  }
+
+  function tick() {
+    var now = new Date();
+    var h = now.getHours();
+    var m = now.getMinutes();
+    var s = now.getSeconds();
+
+    if (h !== lastH) {
+      var hs = pad2(h);
+      H0.flipTo(hs.charAt(0));
+      H1.flipTo(hs.charAt(1));
+      lastH = h;
+    }
+    if (m !== lastM) {
+      var ms = pad2(m);
+      M0.flipTo(ms.charAt(0));
+      M1.flipTo(ms.charAt(1));
+      lastM = m;
+    }
+    if (cfg.seconds !== "off" && s !== lastS) {
+      var ss = pad2(s);
+      if (cfg.seconds === "flip") {
+        S0.flipTo(ss.charAt(0));
+        S1.flipTo(ss.charAt(1));
+      } else {
+        secStatic.innerHTML = "";
+        secStatic.appendChild(document.createTextNode(":" + ss));
+      }
+      lastS = s;
+    }
+    updateDate(now);
+  }
+
+  /* полный сброс циферблата (после смены настроек / возвращения из фона) */
+  function hardReset() {
+    var i;
+    for (i = 0; i < all.length; i++) { all[i].stop(); all[i].val = null; }
+    lastH = -1; lastM = -1; lastS = -1; lastDay = -1;
+    tick();
+    for (i = 0; i < all.length; i++) { all[i].set(all[i].val); }
+  }
+
+  /* ---------- «не засыпать»: тихий зацикленный звук ---------- */
+  var audio = null;
+  function startWake() {
+    if (audio) { return; }
+    /* 1 секунда тишины, WAV PCM16 mono 8000 Гц */
+    var wav = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=";
+    audio = new Audio(wav);
+    audio.loop = true;
+    audio.volume = 0.01;
+    try { audio.play(); } catch (e) {}
+  }
+
+  /* ---------- полный экран ---------- */
+  var btnFull = document.getElementById("btnFull");
+
+  function fsElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement ||
+           document.webkitCurrentFullScreenElement || null;
+  }
+  function updateFullBtn() {
+    if (isStandalone) { btnFull.innerHTML = "&#10003; Весь экран"; btnFull.className = "on"; return; }
+    btnFull.innerHTML = fsElement() ? "Выйти из экрана" : "Во весь экран";
+    btnFull.className = fsElement() ? "on" : "";
+  }
+  function toggleFull() {
+    var d = document.documentElement;
+    if (fsElement()) {
+      if (document.exitFullscreen)        { document.exitFullscreen(); }
+      else if (document.webkitExitFullscreen)   { document.webkitExitFullscreen(); }
+      else if (document.webkitCancelFullScreen) { document.webkitCancelFullScreen(); }
+    } else {
+      startWake();
+      if (d.requestFullscreen)             { d.requestFullscreen(); }
+      else if (d.webkitRequestFullscreen)  { d.webkitRequestFullscreen(); }
+      else if (d.webkitRequestFullScreen)  { d.webkitRequestFullScreen(); }
+    }
+  }
+
+  /* ---------- панель настроек ---------- */
+  var btnSec    = document.getElementById("btnSec");
+  var btnDate   = document.getElementById("btnDate");
+  var btnBright = document.getElementById("btnBright");
+  var hideTimer = null;
+
+  function refreshButtons() {
+    btnSec.className    = (cfg.seconds !== "off") ? "on" : "";
+    btnSec.innerHTML    = (cfg.seconds === "flip") ? "Секунды: лист." :
+                          (cfg.seconds === "static") ? "Секунды: текст" : "Секунды: нет";
+    btnDate.className   = cfg.date ? "on" : "";
+    btnBright.className = cfg.pure ? "on" : "";
+    updateFullBtn();
+  }
+  function showPanel() {
+    panel.className = "on";
+    if (hideTimer) { clearTimeout(hideTimer); }
+    hideTimer = setTimeout(hidePanel, 6000);
+  }
+  function hidePanel() {
+    panel.className = "";
+    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+  }
+
+  /* ---------- события ----------
+     На iOS preventDefault() в touchstart гасит синтезированный click,
+     поэтому действия кнопок вызываем САМИ из touchstart, а click
+     оставляем только для мыши (с защитой от двойного срабатывания). */
+  var ACTIONS = {};
+  ACTIONS.btnFull = function () { toggleFull(); hidePanel(); };
+  ACTIONS.btnSec = function () {
+    cfg.seconds = (cfg.seconds === "off") ? "flip" : (cfg.seconds === "flip" ? "static" : "off");
+    saveCfg(); applyClass(); refreshButtons(); hardReset(); showPanel();
+  };
+  ACTIONS.btnDate = function () {
+    cfg.date = !cfg.date;
+    saveCfg(); applyClass(); refreshButtons(); showPanel();
+  };
+  ACTIONS.btnBright = function () {
+    cfg.pure = !cfg.pure;
+    saveCfg(); applyClass(); refreshButtons(); showPanel();
+  };
+
+  /* возвращает true, если тап был внутри панели (кнопка или её фон) */
+  function handleTap(target) {
+    var n = target;
+    while (n && n !== document) {
+      if (n.id && ACTIONS[n.id]) { ACTIONS[n.id](); return true; }
+      if (n.id === "panel") { return true; }
+      n = n.parentNode;
+    }
+    return false;
+  }
+  function togglePanel() {
+    if (panel.className === "on") { hidePanel(); } else { showPanel(); }
+  }
+
+  var lastTouch = 0;
+
+  document.addEventListener("touchstart", function (e) {
+    /* не даём Safari зумить двойным тапом и тянуть страницу */
+    if (e && e.preventDefault) { e.preventDefault(); }
+    lastTouch = new Date().getTime();
+    startWake();
+    if (!handleTap(e.target)) { togglePanel(); }
+  }, false);
+
+  document.addEventListener("click", function (e) {
+    /* игнорируем click, синтезированный из touch */
+    if (new Date().getTime() - lastTouch < 800) { return; }
+    startWake();
+    if (!handleTap(e.target)) { togglePanel(); }
+  }, false);
+
+  document.addEventListener("contextmenu", function (e) {
+    if (e && e.preventDefault) { e.preventDefault(); }
+  }, false);
+
+  document.addEventListener("touchmove", function (e) {
+    if (e && e.preventDefault) { e.preventDefault(); }
+  }, false);
+
+  document.addEventListener("gesturestart", function (e) {
+    if (e && e.preventDefault) { e.preventDefault(); }
+  }, false);
+
+  /* ориентация / возврат из фона — пересинхронизируем время */
+  function onWake() { layout(); hardReset(); }
+  window.addEventListener("orientationchange", function () { setTimeout(onWake, 350); }, false);
+  window.addEventListener("resize", function () { setTimeout(onWake, 250); }, false);
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) { onWake(); }
+  }, false);
+  document.addEventListener("webkitvisibilitychange", function () {
+    if (!document.webkitHidden) { onWake(); }
+  }, false);
+  document.addEventListener("fullscreenchange", updateFullBtn, false);
+  document.addEventListener("webkitfullscreenchange", updateFullBtn, false);
+
+  /* ---------- старт ---------- */
+  layout();
+  applyClass();
+  refreshButtons();
+
+  /* первое появление цифр — без анимации, чтобы не мигало */
+  hardReset();
+  setTimeout(function () {
+    var h = document.documentElement;
+    if (h.className.indexOf("no-anim") >= 0) {
+      h.className = h.className.replace("no-anim", "");
+    }
+  }, 120);
+
+  /* тикаем часто, чтобы поймать смену минуты точно в секунду */
+  setInterval(tick, 200);
+
+  /* подсказка про «На экран Домой» — только в Safari, не в веб-приложении */
+  if (isIOS && !isStandalone && !fsElement()) {
+    setTimeout(function () { hint.className = "hint on"; }, 1200);
+    setTimeout(function () { hint.className = "hint"; }, 13000);
+  }
+}());
+</script>
+
+</body>
+</html>
