@@ -5,6 +5,9 @@
 старый WebKit: только ES5, только `-webkit-`-префиксы, без CSS-переменных,
 grid/flex, calc() и прочих вещей, которых нет в iOS 9.
 
+<img width="1024" height="768" alt="01-landscape" src="https://github.com/user-attachments/assets/5bee3666-39f4-49ac-95f1-b796a9af4afc" />
+
+
 ## Состав папки
 
 | Файл                 | Зачем                                                        |
